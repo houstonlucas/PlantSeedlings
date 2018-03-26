@@ -71,11 +71,11 @@ class SeedlingClassifier(nn.Module):
         h1, h2, h3 = 200, 100, 50
         self.feed_forward_section = nn.Sequential(
             nn.Linear(self.initial_linear_size, h1),
-            nn.ReLU(),
+            nn.Sigmoid(),
             nn.Linear(h1, h2),
-            nn.ReLU(),
+            nn.Sigmoid(),
             nn.Linear(h2, h3),
-            nn.ReLU(),
+            nn.Sigmoid(),
             nn.Linear(h3, num_classifications),
             nn.Softmax()
         )
@@ -98,12 +98,13 @@ def adjust_learning_rate(optimizer, epoch, initial=0.01, decay=0.8, interval=3):
 
 def main():
     img_size = (64, 64)
+    # TODO: split data into training and test
     m_dataset = SeedlingDataset(img_size)
     loader = data.DataLoader(dataset=m_dataset, batch_size=2 ** 8, shuffle=True)
 
     net = SeedlingClassifier(img_size, len(classifications))
 
-    criterion = nn.MSELoss().cuda()
+    criterion = nn.KLDivLoss()
     optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
 
     loss_history = []
@@ -124,14 +125,16 @@ def main():
             loss_avg = np.average(loss.data.numpy())
 
             optimizer.step()
+
+        loss_history.append(loss_avg)
         epoch_time = time.time()-start
         print("Epoch {} took {} seconds".format(epoch, epoch_time))
+        print("Current loss of {}".format(loss_avg))
         epochs_remaining = num_epochs - epoch - 1
         time_remaining = epochs_remaining * epoch_time
         minutes, seconds = divmod(time_remaining, 60)
         print("Estimating {} minutes {} seconds until finish.".format(int(minutes), int(seconds)))
-
-        loss_history.append(loss_avg)
+        print("#####################################################################")
 
     torch.save(net, "model.pkl")
 
