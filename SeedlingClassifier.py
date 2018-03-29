@@ -1,3 +1,5 @@
+# This model solves the plant seedlings kaggle problem.
+# https://www.kaggle.com/c/plant-seedlings-classification
 import cv2
 import time
 import torch
@@ -38,13 +40,14 @@ class SeedlingDataset(data.Dataset):
         self.img_size = img_size
         for classification in classifications:
             dir_name = os.path.join(data_set_name, classification)
+            classification_target = create_target_label(one_hot_encoding[classification])
             for root, dirs, files in os.walk(dir_name):
                 for filename in files:
                     file_path = os.path.join(root, filename)
                     img = cv2.imread(file_path)
                     img = cv2.resize(img, self.img_size, interpolation=cv2.INTER_CUBIC)
                     img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
-                    self.data.append([img, one_hot_encoding[classification]])
+                    self.data.append([img, classification_target])
         self.length = len(self.data)
 
     def __getitem__(self, index):
@@ -119,6 +122,11 @@ def adjust_learning_rate(optimizer, epoch, initial=0.01, decay=0.8, interval=3):
         param_group['lr'] = lr
 
 
+def create_target_label(one_hot_encoding):
+    index = np.argmax(one_hot_encoding.numpy())
+    return torch.LongTensor([index])
+
+
 def main():
     img_size = (64, 64)
     # TODO: split data into training and test
@@ -127,20 +135,20 @@ def main():
 
     net = SeedlingClassifier(img_size, num_classes)
 
-    criterion = nn.KLDivLoss()
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
+    criterion = nn.NLLLoss()
+    optimizer = torch.optim.SGD(net.parameters())
 
     loss_history = []
 
     num_epochs = 100
     for epoch in range(num_epochs):
-        adjust_learning_rate(optimizer, epoch, interval=2)
+        adjust_learning_rate(optimizer, epoch, interval=5, initial=0.001)
         start = time.time()
         print("Start epoch {}".format(epoch))
         for img, classification in loader:
             optimizer.zero_grad()
             img = Variable(img)
-            classification = Variable(classification)
+            classification = Variable(classification).view(-1)
 
             pred = net(img)
             loss = criterion(pred, classification)
