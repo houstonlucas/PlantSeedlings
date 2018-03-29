@@ -59,24 +59,39 @@ class SeedlingClassifier(nn.Module):
         super(SeedlingClassifier, self).__init__()
         self.img_size = img_size
         self.kernel_size = 5
-        self.conv1 = nn.Conv2d(3, 20, self.kernel_size)
-        self.conv2 = nn.Conv2d(20, 15, self.kernel_size)
-        self.conv3 = nn.Conv2d(15, 10, self.kernel_size)
-        self.conv4 = nn.Conv2d(10, 1, self.kernel_size)
 
-        # Number of convolutions before linear layer
-        num_convs = 4
-        self.initial_linear_size = (img_size[0] - num_convs * (self.kernel_size - 1)) ** 2
+        m1, m2, m3 = 32, 32, 16
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, m1, self.kernel_size),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
 
-        h1, h2, h3 = 200, 100, 50
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(m1, m2, self.kernel_size),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(m2, m3, self.kernel_size),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+
+        self.initial_linear_size = get_initial_linear_layer_size(
+            [self.conv1, self.conv2, self.conv3],
+            img_size
+        )
+
+        h1, h2 = 200, 100
         self.feed_forward_section = nn.Sequential(
             nn.Linear(self.initial_linear_size, h1),
-            nn.Sigmoid(),
+            nn.ReLU(),
             nn.Linear(h1, h2),
-            nn.Sigmoid(),
-            nn.Linear(h2, h3),
-            nn.Sigmoid(),
-            nn.Linear(h3, num_classifications),
+            nn.ReLU(),
+            nn.Linear(h2, num_classifications),
+            nn.ReLU(),
             nn.Softmax()
         )
 
@@ -84,9 +99,17 @@ class SeedlingClassifier(nn.Module):
         c1 = self.conv1(img)
         c2 = self.conv2(c1)
         c3 = self.conv3(c2)
-        c4 = self.conv4(c3)
-        reshaped = c4.view(-1, self.initial_linear_size)
+        reshaped = c3.view(-1, self.initial_linear_size)
         return self.feed_forward_section(reshaped)
+
+
+def get_initial_linear_layer_size(convolutional_layers, img_size, num_channels=3):
+    img_shape = [1, num_channels] + list(img_size)
+    test_img = Variable(torch.randn(img_shape))
+    for conv in convolutional_layers:
+        test_img = conv(test_img)
+    test_img = test_img.view(-1, 1)
+    return test_img.size()[0]
 
 
 def adjust_learning_rate(optimizer, epoch, initial=0.01, decay=0.8, interval=3):
