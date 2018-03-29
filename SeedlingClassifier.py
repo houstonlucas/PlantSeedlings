@@ -127,13 +127,14 @@ def main():
             optimizer.step()
 
         loss_history.append(loss_avg)
-        epoch_time = time.time()-start
+        epoch_time = time.time() - start
         print("Epoch {} took {} seconds".format(epoch, epoch_time))
         print("Current loss of {}".format(loss_avg))
         epochs_remaining = num_epochs - epoch - 1
         time_remaining = epochs_remaining * epoch_time
         minutes, seconds = divmod(time_remaining, 60)
-        print("Estimating {} minutes {} seconds until finish.".format(int(minutes), int(seconds)))
+        hours, minutes = divmod(minutes, 60)
+        print("Estimating {} hours {} minutes {} seconds until finish.".format(int(hours), int(minutes), int(seconds)))
         print("#####################################################################")
 
     torch.save(net, "model.pkl")
