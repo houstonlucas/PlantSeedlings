@@ -22,9 +22,9 @@ classifications = ["Black-grass",
                    "Small-flowered Cranesbill",
                    "Sugar beet"
                    ]
-
+num_classes = len(classifications)
 one_hot_encoding = {}
-I = np.eye(len(classifications))
+I = np.eye(num_classes)
 for i, name in enumerate(classifications):
     one_hot_encoding[name] = torch.from_numpy(I[i]).type(torch.FloatTensor)
 
@@ -102,7 +102,7 @@ def main():
     m_dataset = SeedlingDataset(img_size)
     loader = data.DataLoader(dataset=m_dataset, batch_size=2 ** 8, shuffle=True)
 
-    net = SeedlingClassifier(img_size, len(classifications))
+    net = SeedlingClassifier(img_size, num_classes)
 
     criterion = nn.KLDivLoss()
     optimizer = torch.optim.SGD(net.parameters(), lr=0.01)
