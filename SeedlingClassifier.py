@@ -8,6 +8,7 @@ import torch.nn as nn
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
 from torch.autograd import Variable
 
@@ -32,22 +33,26 @@ for i, name in enumerate(classifications):
 
 
 class SeedlingDataset(data.Dataset):
-    def __init__(self, img_size, train=True):
+    def __init__(self, img_size, data_list_filename):
         super(SeedlingDataset, self).__init__()
         self.data = []
-        data_set_name = "train" if train else "test"
 
         self.img_size = img_size
+        with open(data_list_filename, 'r') as f:
+            data_list = json.load(f)
+
+        # Generate labels
+        targets = {}
         for classification in classifications:
-            dir_name = os.path.join(data_set_name, classification)
             classification_target = create_target_label(one_hot_encoding[classification])
-            for root, dirs, files in os.walk(dir_name):
-                for filename in files:
-                    file_path = os.path.join(root, filename)
-                    img = cv2.imread(file_path)
-                    img = cv2.resize(img, self.img_size, interpolation=cv2.INTER_CUBIC)
-                    img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
-                    self.data.append([img, classification_target])
+            targets[classification] = classification_target
+
+        for file_path, classification in data_list.items():
+            img = cv2.imread(file_path)
+            img = cv2.resize(img, self.img_size, interpolation=cv2.INTER_CUBIC)
+            img = torch.from_numpy(img).type(torch.FloatTensor).permute(2, 0, 1)
+            self.data.append([img, targets[classification]])
+
         self.length = len(self.data)
 
     def __getitem__(self, index):
@@ -127,25 +132,46 @@ def create_target_label(one_hot_encoding):
     return torch.LongTensor([index])
 
 
+def get_loss(data_loader, net, criterion):
+    loss_sum = 0.0
+    num_samples = 0
+    for img, classification in data_loader:
+        num_samples += img.size()[0]
+        img = Variable(img)
+        classification = Variable(classification).view(-1)
+
+        pred = net(img)
+        loss = criterion(pred, classification)
+        loss_sum += np.sum(loss.data.numpy())
+    return loss_sum/num_samples
+
+
 def main():
     img_size = (64, 64)
-    # TODO: split data into training and test
-    m_dataset = SeedlingDataset(img_size)
-    loader = data.DataLoader(dataset=m_dataset, batch_size=2 ** 8, shuffle=True)
+    train_dataset = SeedlingDataset(img_size, "train_files")
+    validation_dataset = SeedlingDataset(img_size, "validation_files")
+    train_loader = data.DataLoader(dataset=train_dataset, batch_size=2 ** 8, shuffle=True)
+    validation_loader = data.DataLoader(dataset=validation_dataset, batch_size=2 ** 8, shuffle=True)
 
     net = SeedlingClassifier(img_size, num_classes)
 
+    initial_lr = 0.001
     criterion = nn.NLLLoss()
-    optimizer = torch.optim.SGD(net.parameters())
+    optimizer = torch.optim.SGD(net.parameters(), lr=initial_lr)
 
-    loss_history = []
+    train_loss_history = []
+    validation_loss_history = []
+    train_loss = get_loss(train_loader, net, criterion)
+    val_loss = get_loss(validation_loader, net, criterion)
+    train_loss_history.append(train_loss)
+    validation_loss_history.append(val_loss)
 
     num_epochs = 100
     for epoch in range(num_epochs):
-        adjust_learning_rate(optimizer, epoch, interval=5, initial=0.001)
+        adjust_learning_rate(optimizer, epoch, interval=5, initial=initial_lr)
         start = time.time()
         print("Start epoch {}".format(epoch))
-        for img, classification in loader:
+        for img, classification in train_loader:
             optimizer.zero_grad()
             img = Variable(img)
             classification = Variable(classification).view(-1)
@@ -153,14 +179,16 @@ def main():
             pred = net(img)
             loss = criterion(pred, classification)
             loss.backward()
-            loss_avg = np.average(loss.data.numpy())
-
             optimizer.step()
 
-        loss_history.append(loss_avg)
+        train_loss = get_loss(train_loader, net, criterion)
+        val_loss = get_loss(validation_loader, net, criterion)
+        train_loss_history.append(train_loss)
+        validation_loss_history.append(val_loss)
+
         epoch_time = time.time() - start
         print("Epoch {} took {} seconds".format(epoch, epoch_time))
-        print("Current loss of {}".format(loss_avg))
+        print("Train loss:{}\tValidation loss:{}".format(train_loss, val_loss))
         epochs_remaining = num_epochs - epoch - 1
         time_remaining = epochs_remaining * epoch_time
         minutes, seconds = divmod(time_remaining, 60)
@@ -170,8 +198,9 @@ def main():
 
     torch.save(net, "model.pkl")
 
-
-    plt.plot(range(len(loss_history)), loss_history)
+    plt.plot(range(len(train_loss_history)), train_loss_history, label="Training")
+    plt.plot(range(len(validation_loss_history)), validation_loss_history, label="Validation")
+    plt.legend()
     plt.show()
 
 
